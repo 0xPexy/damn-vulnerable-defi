@@ -25,6 +25,8 @@ import {
     SAFE_SINGLETON_FACTORY_CODE
 } from "./SafeSingletonFactory.sol";
 
+import {Exploit} from "./Exploit.t.sol";
+
 contract WalletMiningChallenge is Test {
     address deployer = makeAddr("deployer");
     address upgrader = makeAddr("upgrader");
@@ -157,7 +159,19 @@ contract WalletMiningChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_walletMining() public checkSolvedByPlayer {
-        
+        Exploit e = new Exploit(
+            player,
+            user,
+            ward,
+            address(authorizer),
+            USER_DEPOSIT_ADDRESS,
+            proxyFactory,
+            address(singletonCopy),
+            walletDeployer,
+            token,
+            userPrivateKey
+        );
+        e.run();
     }
 
     /**
