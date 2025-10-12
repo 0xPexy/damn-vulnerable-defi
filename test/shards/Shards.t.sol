@@ -12,7 +12,10 @@ import {
 } from "../../src/shards/ShardsNFTMarketplace.sol";
 import {DamnValuableStaking} from "../../src/DamnValuableStaking.sol";
 
-contract ShardsChallenge is Test {
+import {Handler} from "./Handler.t.sol";
+import {StdInvariant} from "forge-std/StdInvariant.sol";
+
+contract ShardsChallenge is StdInvariant, Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
     address seller = makeAddr("seller");
@@ -35,6 +38,8 @@ contract ShardsChallenge is Test {
     DamnValuableStaking staking;
 
     uint256 initialTokensInMarketplace;
+
+    Handler h;
 
     modifier checkSolvedByPlayer() {
         vm.startPrank(player, player);
@@ -84,6 +89,13 @@ contract ShardsChallenge is Test {
         }
 
         initialTokensInMarketplace = token.balanceOf(address(marketplace));
+
+        h = new Handler(marketplace, token, 1);
+        bytes4[] memory selectors = new bytes4[](2);
+        selectors[0] = h.actFill.selector;
+        selectors[1] = h.actCancel.selector;
+        targetContract(address(h));
+        targetSelector(FuzzSelector({addr: address(h), selectors: selectors}));
 
         vm.stopPrank();
     }
@@ -135,6 +147,8 @@ contract ShardsChallenge is Test {
         // Player must have executed a single transaction
         assertEq(vm.getNonce(player), 1);
     }
+
+    function invariant_refundNotGreaterThanPaid() public {}
 }
 
 contract Exploit {
